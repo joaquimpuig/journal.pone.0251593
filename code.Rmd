@@ -1,0 +1,381 @@
+---
+title: "SARS-CoV-2 transmission in students of public schools of Catalonia, Spain, after a month of reopening"
+author: "Llupia et al"
+date: "Dec. 22nd 2020"
+output:
+  html_document: null
+  pdf_document: default
+  toc_depth: 2
+  toc: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(lubridate)
+library(incidence)
+library(ggplot2)
+library(lme4)
+library(knitr)
+library(epitools)
+library(sjPlot)
+```
+## Declaration
+
+**This is supporting information alongside the article "SARS-CoV-2 transmission in students of public schools of Catalonia, Spain, after a month of reopening" by Llupià et al.**
+
+## Dataset description
+
+Read the dataset 'total.centres.csv' where all the data for the analysis is stored:
+```{r}
+total.centres<-read.csv('total-centres.csv')
+
+#Generate smaller database of Primary Education
+primary.schools<-subset(total.centres,total.centres$Type.of.School=="Public Primary 3-12")
+#Generate smaller database of Secondary Education
+secondary.schools<-subset(total.centres,total.centres$Type.of.School=="Public Secondary 12-16+")
+```
+
+All data comes from publicly available data of the Catalan Government (see below 'Data Sources'). For convenience, the dataset 'total-centres.csv' contains the all the data for the analysis. Every line is a different centre registered in the `Traça Covid' system for reporting Sars-Cov-2 cases among students and staff (see the paper for description).
+
+The variables are the following:
+
+
+* 'Students.Weeks.4.and.5' : Incidence among students in weeks 4 and 5,
+* 'TOTAL.Weeks.1.and.2' : Reported Cases among students and staff in weeks 1 and 2.
+* 'Students.Weeks.1.and.2' : Reported Cases among students in weeks 1 and 2,
+* 'Adults.Weeks.1.and.2' :Reported Cases among staff in weeks 1 and 2,
+* 'BHA.Incidence.Weeks.1.and.2' : Incidence in the Basic Health Area (cases per 100,000 habitants per 14 days) in weeks 1 and 2,
+* 'Type.of.School' : Type of School, primary or Secondary.
+* 'Educational.Levels' : Type of studies in the centre (used to determine age range).
+* 'Confined.Students.Week.2' : Number of confined students at the end of week 2.       
+* 'Confined.Students.Week.3' : Number of confined students at the end of week 3.
+* 'Confined.Students.Week.5' : Number of confined students at the end of week 5.
+
+
+## Data Sources
+
+* The database of ED centres, from the Education department: [https://analisi.transparenciacatalunya.cat/d/3u9c-b74b]. Includes the type of studies. 
+* `Enrolled.Students` The number of enrolled students in the previous course 2019/20 by ED centre. [https://analisi.transparenciacatalunya.cat/Educaci-/Alumnes-Enrolled.Students-per-ensenyament-i-unitats-dels/xvme-26kg]
+* The database of daily COVID-19 cases in the general population by BHA, from the health department [https://dadescovid.cat/descarregues], more precisely [https://analisi.transparenciacatalunya.cat/ca/Salut/Registre-de-casos-de-COVID-19-realitzats-a-Catalun/xuwf-dxjd]
+* The database of BHA and population of each area. Registre central de població del CatSalutSalut [https://analisi.transparenciacatalunya.cat/en/Salut/Registre-central-de-poblaci-del-CatSalut/ftq4-h9vk]
+
+
+
+### Summary of Included Schools
+
+This is the summary of Primary Schools
+```{r}
+kable(t(summary(primary.schools)),digits = 1,format="html",caption = "Summary of Primary Schools")
+``` 
+```{r}
+kable(t(summary(secondary.schools)),digits = 1,format="html",caption = "Summary of Secondary Schools")
+```
+
+
+```{r}
+#generate the totals
+num.centres<-xtabs(~Type.of.School,total.centres)
+num.students<-xtabs(Enrolled.Students~Type.of.School,total.centres)
+
+# Weeks 1 and 2
+mean.incidence.ABS.1.14<-cbind(mean(primary.schools$BHA.Incidence.Weeks.1.and.2,na.rm=TRUE),mean(secondary.schools$BHA.Incidence.Weeks.1.and.2,na.rm=TRUE))
+sd.incidence.ABS.1.14<-cbind(sd(primary.schools$BHA.Incidence.Weeks.1.and.2,na.rm=TRUE),sd(secondary.schools$BHA.Incidence.Weeks.1.and.2,na.rm=TRUE))
+#We put them together
+num.of.positive.1.14<-xtabs(TOTAL.Weeks.1.and.2~Type.of.School,total.centres)
+num.of.positive.students.1.14<-xtabs(Students.Weeks.1.and.2~Type.of.School,total.centres)
+count.of.positive.students.1.14<-xtabs(~TOTAL.Weeks.1.and.2+Type.of.School,total.centres)
+
+num.of.centres.with.positives.1.14<-xtabs(Exposed~Type.of.School,total.centres)
+per.of.centres.with.positives.1.14<-100*num.of.centres.with.positives.1.14/num.centres
+
+#Weeks 4 and 5
+num.of.positive.22.35<-xtabs(TOTAL.Weeks.4.and.5~Type.of.School,total.centres)
+num.of.positive.students.22.35<-xtabs(Students.Weeks.4.and.5~Type.of.School,total.centres)
+count.of.positive.students.22.35<-xtabs(~TOTAL.Weeks.4.and.5+Type.of.School,total.centres)
+
+total.centres$Cas <- total.centres$TOTAL.Weeks.4.and.5>0
+num.of.centres.with.positives.22.35<-xtabs(Cas~Type.of.School,total.centres)
+per.of.centres.with.positives.22.35<-100*num.of.centres.with.positives.22.35/num.centres
+
+
+taula<-rbind(num.centres,
+             num.students,
+             mean.incidence.ABS.1.14,
+             sd.incidence.ABS.1.14,
+             num.of.positive.1.14,
+             num.of.positive.students.1.14,
+             count.of.positive.students.1.14,
+             num.of.centres.with.positives.1.14,
+             per.of.centres.with.positives.1.14,
+             num.of.positive.22.35,
+             num.of.positive.students.22.35,
+             count.of.positive.students.22.35,
+             num.of.centres.with.positives.22.35,
+             per.of.centres.with.positives.22.35)
+
+#We change the row names
+noms.taula<-c("Number of Schools",
+                   "Number of Enrolled Students",
+                   "BHA incidence (days 0-13): mean",
+                   "BHA incidence (days 0-13): sd ",
+                   "Total Number of positives (days 1-14)",
+                   "........of which students (days 1-14)",
+                   paste(paste("Centers with", levels(factor(total.centres$TOTAL.Weeks.1.and.2)))," cases on days 1-14"),
+                   "Centres with Some positive (days 1-14): Count",
+                   "Centres with Some positive (days 1-14):     %",
+                   "Total Number of positives (days 22-25)",
+                   "........of which students (days 22-35)",
+                   paste(paste("Centers with", levels(factor(total.centres$TOTAL.Weeks.4.and.5)))," cases on days 22-35"),
+                   "Centres with Some positive (days 22-35): Count",
+                   "Centres with Some positive (days 22-35):     %"
+                   )
+rownames(taula)<-noms.taula
+```
+
+
+```{r}
+kable(taula,digits = 1, caption = 'Table 1',col.names = c('Primary Schools','Secondary Schools'))
+```
+## Incidence in the Basic Health Areas (ABS/BHA)
+
+Incidence in the Basic Health Area in Weeks 1-2 (cases per 100,000) is recorded in variable 'BHA.Incidence.Weeks.1.and.2':
+```{r}
+incidencies<-total.centres$BHA.Incidence.Weeks.1.and.2[match(unique(total.centres$BHA),total.centres$BHA)]
+summary(incidencies)
+```
+
+## Confined Students and centres
+
+```{r}
+taula.confinats<-xtabs(cbind(Confined.Students.Week.2,
+            Confined.Students.Week.3,
+            Confined.Students.Week.5)~Type.of.School,total.centres)
+kable(taula.confinats,caption= 'Number of Confined Students', 
+      col.names = c('End of Week 2','End of Week 3', 'End of Week 5'))
+```
+Number of confined students at the end of Week 2:
+```{r}
+estudiants.primaria<-sum(primary.schools$Enrolled.Students)
+estudiants.secundaria<-sum(secondary.schools$Enrolled.Students)
+kable(binom.exact(taula.confinats[c(1:2),1],c(estudiants.primaria,estudiants.secundaria)),caption='Confined Students. End of Week 2')
+```
+Number of confined students at the beginning of Week 4:
+```{r}
+kable(binom.exact(taula.confinats[c(1:2),2],c(estudiants.primaria,estudiants.secundaria)),caption='Confined Students. End of Week 3')
+```
+Number of confined students at the end of Week 5:
+```{r}
+kable(binom.exact(taula.confinats[c(1:2),3],c(estudiants.primaria,estudiants.secundaria)),caption='Confined Students. End of Week 5')
+```
+
+## Incidence in the centres
+
+Incidence in Schools in Weeks 1-2:
+```{r}
+summary(1e5*(primary.schools$Students.Weeks.1.and.2/(primary.schools$Enrolled.Students)))
+```
+
+Incidence in Schools in the second period
+```{r}
+summary(1e5*(primary.schools$Students.Weeks.4.and.5/(primary.schools$Enrolled.Students- primary.schools$Students.Weeks.1.2.and.3)))
+```
+
+Incidence in Institutes in the first period
+```{r}
+summary(1e5*(secondary.schools$Students.Weeks.1.and.2/(secondary.schools$Enrolled.Students)))
+```
+
+Incidence in Institutes in the second period
+```{r}
+summary(1e5*(secondary.schools$Students.Weeks.4.and.5/(secondary.schools$Enrolled.Students- secondary.schools$Students.Weeks.1.2.and.3)))
+```
+
+Now the incidences
+```{r}
+1e5*binom.exact(sum(primary.schools$Students.Weeks.1.and.2),sum(primary.schools$Enrolled.Students))
+1e5*binom.exact(sum(secondary.schools$Students.Weeks.1.and.2),sum(secondary.schools$Enrolled.Students))
+```
+
+Weeks 4 and 5
+```{r}
+1e5*binom.exact(sum(primary.schools$Students.Weeks.4.and.5),sum(primary.schools$Enrolled.Students- primary.schools$Students.Weeks.1.2.and.3))
+1e5*binom.exact(sum(secondary.schools$Students.Weeks.4.and.5),sum(secondary.schools$Enrolled.Students- secondary.schools$Students.Weeks.1.2.and.3))
+```
+
+
+## Educational Levels in each Type of School
+
+```{r}
+addmargins(table(primary.schools$Educational.Levels))
+```
+
+```{r}
+addmargins(table(secondary.schools$Educational.Levels))
+```
+
+
+## Graphics
+
+We define the cuts according to Harvard levels for safe reopening (see paper for description):
+```{r}
+total.centres$ABS.harvard.ALL<-cut(total.centres$BHA.Incidence.Weeks.1.and.2,breaks = c(0,14*1,14*10,14*25,1200),
+                                include.lowest = TRUE
+                              # ,labels=c("green","yellow","orange","red")
+                               )
+semafor <- c("green","yellow", "orange", "red", "purple")
+kable(addmargins(xtabs(~Type.of.School+ABS.harvard.ALL,total.centres)),caption='Number of Schools in BHA according to Harvard Risk Levels')
+```
+and now the plot
+```{r}
+ggplot(total.centres,aes(ABS.harvard.ALL))+
+  geom_bar(aes(fill=(ABS.harvard.ALL)))+
+  facet_wrap(~Type.of.School)+scale_fill_manual(values=semafor)+theme_bw()
+```
+
+##Incidence of School Students in the two study periods
+
+
+```{r}
+t.pos.inclosos<-xtabs(cbind(Students.Weeks.1.and.2,
+                            Students.Weeks.4.and.5)~
+                        Type.of.School,
+                      total.centres)
+
+t.mat.inclosos<-xtabs(cbind(Enrolled.Students,
+                          (Enrolled.Students-Students.Weeks.1.2.and.3))~
+                        Type.of.School,
+                      total.centres)
+
+df<-as.data.frame(t.pos.inclosos)
+names(df)[names(df) == "Freq"] <- "Cases"
+names(df)[names(df) == "Var2"] <- "Period"
+df$Week<-df$Period
+levels(df$Week)<-c("14/9-27/9","5/10-18/10")
+
+
+df.Enrolled.Students<-as.data.frame(t.mat.inclosos)
+names(df.Enrolled.Students)[names(df.Enrolled.Students) == "Freq"] <- "Enrolled.Students"
+df$Enrolled.Students<-df.Enrolled.Students$Enrolled.Students
+df$Incidence<-1e5*df$Cases/df$Enrolled.Students
+dfaux<-binom.exact(df$Cases,floor(df$Enrolled.Students))
+df$Incidence.lwr<-1e5*dfaux$lower
+df$Incidence.upr<-1e5*dfaux$upper
+kable(df[,c(1,3,4,5,6,7,8)],digits=2,col.names=c("Type of School","Cases among Students","Week",
+                                                 "Enrolled Students","Incidence (cases x100,000)", "Lower CI", "Upper CI"))
+```
+
+## Figure 2: Incidence by Risk Levels in schools with and without cases in weeks 1-2
+```{r}
+t.pos.inclosos<-xtabs(cbind(Students.Weeks.1.and.2,
+                            Students.Weeks.4.and.5)~
+                        Exposed+ABS.harvard.ALL,
+                      total.centres)
+
+t.mat.inclosos<-xtabs(cbind(Enrolled.Students,
+                          (Enrolled.Students-Students.Weeks.1.2.and.3))~
+                        Exposed+ABS.harvard.ALL,
+                      total.centres)
+
+df<-as.data.frame(t.pos.inclosos)
+names(df)[names(df) == "Freq"] <- "Cases"
+names(df)[names(df) == "Var3"] <- "Period"
+df$Week<-df$Period
+levels(df$Week)<-c("14/9-27/9","5/10-18/10")
+
+
+df.Enrolled.Students<-as.data.frame(t.mat.inclosos)
+names(df.Enrolled.Students)[names(df.Enrolled.Students) == "Freq"] <- "Enrolled.Students"
+df$Enrolled.Students<-df.Enrolled.Students$Enrolled.Students
+df$Incidence<-1e5*df$Cases/df$Enrolled.Students
+library(epitools)
+dfaux<-binom.exact(df$Cases,df$Enrolled.Students)
+df$Incidence.lwr<-1e5*dfaux$lower
+df$Incidence.upr<-1e5*dfaux$upper
+df$ABS.harvard.ALL.noms<-df$ABS.harvard.ALL
+levels(df$ABS.harvard.ALL.noms)<-c("Green","Yellow","Orange","Red")
+```
+here is the plot
+```{r}
+levels(df$Exposed)<-c("No","Yes")
+ggplot(subset(df,df$ABS.harvard.ALL.noms != "Green"))+
+   geom_line(aes(x=Week,y=Incidence,color=Exposed,group=Exposed))+
+  geom_pointrange(aes(x=Week,y=Incidence,ymin=Incidence.lwr,ymax=Incidence.upr,color=Exposed))+
+  geom_errorbar(aes(x=Week,ymin=Incidence.lwr,ymax=Incidence.upr,color=Exposed),width=0.2)+
+  facet_grid(cols=vars(ABS.harvard.ALL.noms),scales='free_y')+
+  #ggtitle('All Public Schools 3-16+ of Catalonia')+
+  labs(x="Period", y="Incidence in Schools (cases per 100,000 students)", color="Cases in the \n first 14 days?")+
+  theme_bw()
+```
+and the data:
+
+```{r}
+kable(df[,c(1,4,5,6,7,8,9,10)],
+      digits=2,
+      col.names=c("Cases in Weeks 1-2?","Cases among Students","Period",
+                                                 "Enrolled Students","Incidence (cases x100,000)", "Lower CI", "Upper CI", "Risk Level"))
+```
+
+# Table 2: Univariate and GLMM
+
+
+First the univariate models
+```{r}
+total.univ.1<-glm(Students.Weeks.4.and.5~TOTAL.Weeks.1.and.2+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+
+total.univ.2<-glm(Students.Weeks.4.and.5~Students.Weeks.1.and.2+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+
+total.univ.3<-glm(Students.Weeks.4.and.5~Adults.Weeks.1.and.2+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+
+total.univ.4<-glm(Students.Weeks.4.and.5~BHA.Incidence.Weeks.1.and.2.x1000+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+
+total.univ.5<-glm(Students.Weeks.4.and.5~Type.of.School+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+```
+
+Now the Poisson multi-level:
+```{r}
+total.pois.re.3<-glmer(Students.Weeks.4.and.5~TOTAL.Weeks.1.and.2+BHA.Incidence.Weeks.1.and.2.x1000+Type.of.School+
+                         (1|BHA)+(1|SR)+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+
+total.pois.re.4<-glmer(Students.Weeks.4.and.5~Students.Weeks.1.and.2+
+                         +Adults.Weeks.1.and.2+BHA.Incidence.Weeks.1.and.2.x1000+Type.of.School+
+                         (1|BHA)+(1|SR)+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3)),total.centres,family=poisson(link = "log"))
+```
+
+Table 2:
+```{r}
+pl <- c(
+  `(Intercept)` = "(Intercept)",
+  Students.Weeks.4.and.5 = "Incidence among students in the last two weeks ",
+  TOTAL.Weeks.1.and.2= "Reported Cases among students and staff in the first two weeks",
+  Students.Weeks.1.and.2= "Reported Cases among students in the first two weeks",
+  Adults.Weeks.1.and.2="Reported Cases among staff in the first two weeks",
+  BHA.Incidence.Weeks.1.and.2.x1000="Incidence in the Basic Health Area (cases per 1,000 habitants per 14 days) in the first two weeks",
+  Type.of.School = "Type of School (ref. Primary)"
+  )
+
+tab_model(total.univ.1,total.univ.2,total.univ.3,total.univ.4,total.univ.5,total.pois.re.3,total.pois.re.4,pred.labels = pl, dv.labels = 'Relative Risk of Covid-19 Cases Cases on the last two weeks',digits = 3,collapse.ci = TRUE,show.p=TRUE)
+```
+
+## Supplementary Model: Exposition as categorical variable
+
+
+```{r}
+total.centres$exposure<-total.centres$TOTAL.Weeks.1.and.2>0
+total.centres$exposure.to.students<-total.centres$Students.Weeks.1.and.2>0
+total.centres$exposure.to.staff<-total.centres$Adults.Weeks.1.and.2>0
+
+total.cate.3<-glmer(Students.Weeks.4.and.5~exposure+ 
+                      BHA.Incidence.Weeks.1.and.2.x1000+Type.of.School+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3))+
+                   (1|BHA)+(1|SR),
+                 total.centres,family=poisson(link = "log"))
+
+total.cate.4<-glmer(Students.Weeks.4.and.5~exposure.to.staff+exposure.to.students+                    +BHA.Incidence.Weeks.1.and.2.x1000+Type.of.School+offset(log(Enrolled.Students-Students.Weeks.1.2.and.3))+
+                   (1|BHA)+(1|SR),
+                 total.centres,family=poisson(link = "log"))
+
+tab_model(total.cate.3,total.cate.4, pred.labels = pl, dv.labels = 'Relative Risk of Covid-19 Cases Cases on the last two weeks',digits = 3,collapse.ci = TRUE, show.p=TRUE)
+```
