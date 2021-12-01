@@ -5,3 +5,7 @@ File inventory:
 
 * The file Rmd is a R Markdown file with all the commands to reproduce the paper.
 * The database 'total-centres.csv' includes the database for the analysis.
+
+
+[![DOI](https://zenodo.org/badge/403572009.svg)](https://zenodo.org/badge/latestdoi/403572009)
+
